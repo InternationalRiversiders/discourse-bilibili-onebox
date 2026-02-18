@@ -31,6 +31,11 @@ after_initialize do
         LIVE_INLINE_REGEX = /href="https?:\/\/live\.bilibili\.com\/(?:blanc\/)?(\d+)(?:[\/?#].*)?"[^>]*?class="inline-onebox"/
         matches_regexp Regexp.union(REGEX, INLINE_REGEX, LIVE_REGEX, LIVE_INLINE_REGEX)
 
+        # 声明 Onebox iframe 来源，避免被 onebox 允许列表过滤。
+        def self.iframe_origins
+          ["https://player.bilibili.com", "https://www.bilibili.com"]
+        end
+
         def self.iframe_html(video_id, page = nil)
           # 保留原链接中的 p 分P参数（若存在）。
           page_query = page.present? ? "&p=#{page}" : ""
