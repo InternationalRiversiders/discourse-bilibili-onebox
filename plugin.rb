@@ -254,29 +254,14 @@ after_initialize do
 
               leading = content[/\A\s*/]
               trailing = content[/\s*\z/]
-              q = extract_query_param(stripped, "q")
-              q_suffix = q.present? ? "?q=#{CGI.escape(q)}" : ""
+              p = extract_video_page(stripped)
+              query_suffix = p.present? ? "?p=#{p}" : ""
               Rails.logger.warn(
                 "[discourse-bilibili-onebox] short link expanded: #{stripped} -> #{video_id}",
                 )
-              "#{leading}https://www.bilibili.com/video/#{video_id}#{q_suffix}#{trailing}#{newline}"
+              "#{leading}https://www.bilibili.com/video/#{video_id}#{query_suffix}#{trailing}#{newline}"
             end
             .join
-        end
-
-        def self.extract_query_param(url, key)
-          return if url.blank? || key.blank?
-
-          uri = URI.parse(url)
-          return if uri.query.blank?
-
-          # 仅取第一个同名参数，避免重复参数带来不确定性。
-          URI.decode_www_form(uri.query).each do |k, v|
-            return v if k == key
-          end
-          nil
-        rescue URI::InvalidURIError, ArgumentError
-          nil
         end
 
         def self.sanitize_video_links(raw)
@@ -292,12 +277,12 @@ after_initialize do
 
               video_id = extract_video_id(stripped)
               next line if video_id.blank?
-              q = extract_query_param(stripped, "q")
+              p = extract_video_page(stripped)
 
               leading = content[/\A\s*/]
               trailing = content[/\s*\z/]
-              q_suffix = q.present? ? "?q=#{CGI.escape(q)}" : ""
-              sanitized_url = "https://www.bilibili.com/video/#{video_id}#{q_suffix}"
+              query_suffix = p.present? ? "?p=#{p}" : ""
+              sanitized_url = "https://www.bilibili.com/video/#{video_id}#{query_suffix}"
               Rails.logger.warn(
                 "[discourse-bilibili-onebox] video link sanitized: #{stripped} -> #{sanitized_url}",
                 )
