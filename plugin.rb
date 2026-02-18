@@ -254,10 +254,54 @@ after_initialize do
 
               leading = content[/\A\s*/]
               trailing = content[/\s*\z/]
+              q = extract_query_param(stripped, "q")
+              q_suffix = q.present? ? "?q=#{CGI.escape(q)}" : ""
               Rails.logger.warn(
                 "[discourse-bilibili-onebox] short link expanded: #{stripped} -> #{video_id}",
                 )
-              "#{leading}https://www.bilibili.com/video/#{video_id}#{trailing}#{newline}"
+              "#{leading}https://www.bilibili.com/video/#{video_id}#{q_suffix}#{trailing}#{newline}"
+            end
+            .join
+        end
+
+        def self.extract_query_param(url, key)
+          return if url.blank? || key.blank?
+
+          uri = URI.parse(url)
+          return if uri.query.blank?
+
+          # 仅取第一个同名参数，避免重复参数带来不确定性。
+          URI.decode_www_form(uri.query).each do |k, v|
+            return v if k == key
+          end
+          nil
+        rescue URI::InvalidURIError, ArgumentError
+          nil
+        end
+
+        def self.sanitize_video_links(raw)
+          return raw if raw.blank?
+
+          raw
+            .lines
+            .map do |line|
+              newline = line.end_with?("\n") ? "\n" : ""
+              content = line.delete_suffix("\n")
+              stripped = content.strip
+              next line unless stripped.match?(REGEX)
+
+              video_id = extract_video_id(stripped)
+              next line if video_id.blank?
+              q = extract_query_param(stripped, "q")
+
+              leading = content[/\A\s*/]
+              trailing = content[/\s*\z/]
+              q_suffix = q.present? ? "?q=#{CGI.escape(q)}" : ""
+              sanitized_url = "https://www.bilibili.com/video/#{video_id}#{q_suffix}"
+              Rails.logger.warn(
+                "[discourse-bilibili-onebox] video link sanitized: #{stripped} -> #{sanitized_url}",
+                )
+              "#{leading}#{sanitized_url}#{trailing}#{newline}"
             end
             .join
         end
@@ -363,10 +407,11 @@ after_initialize do
     end
   end
 
-  # 发帖落库前规范化 b23 短链接。
+  # 发帖落库前：短链展开 + 视频链接查询参数清洗。
   on(:before_create_post) do |post, _params|
     original_raw = post.raw
     expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(original_raw)
+    expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
     expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw)
     if expanded_raw != original_raw
       Rails.logger.warn(
@@ -389,6 +434,7 @@ after_initialize do
           matched_lines = raw.lines.count do |line|
             stripped = line.strip
             stripped.match?(::Onebox::Engine::BilibiliOnebox::SHORT_LINK_REGEX) ||
+              stripped.match?(::Onebox::Engine::BilibiliOnebox::REGEX) ||
               stripped.match?(::Onebox::Engine::BilibiliOnebox::LIVE_REGEX)
           end
           if matched_lines > 0
@@ -403,6 +449,7 @@ after_initialize do
 
             # 提前规范化短链，确保编辑走标准的校验/修订/烘焙流程。
             expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(raw)
+            expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
             expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw)
             if expanded_raw != raw
               Rails.logger.warn(
