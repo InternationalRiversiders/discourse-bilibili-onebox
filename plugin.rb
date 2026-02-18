@@ -8,6 +8,7 @@
 require "json"
 require "net/http"
 require "uri"
+require "cgi"
 require_dependency "final_destination"
 register_css <<~CSS
   .bilibili-onebox {
@@ -30,13 +31,29 @@ after_initialize do
         LIVE_INLINE_REGEX = /href="https?:\/\/live\.bilibili\.com\/(?:blanc\/)?(\d+)(?:[\/?#].*)?"[^>]*?class="inline-onebox"/
         matches_regexp Regexp.union(REGEX, INLINE_REGEX, LIVE_REGEX, LIVE_INLINE_REGEX)
 
-        def self.iframe_html(video_id)
-          "<iframe class='bilibili-onebox' src='https://player.bilibili.com/player.html?bvid=#{video_id}&high_quality=1&autoplay=0' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allowfullscreen='true'></iframe>"
+        def self.iframe_html(video_id, page = nil)
+          # 保留原链接中的 p 分P参数（若存在）。
+          page_query = page.present? ? "&p=#{page}" : ""
+          "<iframe class='bilibili-onebox' src='https://player.bilibili.com/player.html?bvid=#{video_id}#{page_query}&high_quality=1&autoplay=0' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allowfullscreen='true'></iframe>"
         end
 
         def self.extract_video_id(url)
           match = REGEX.match(url)
           match && match[2]
+        end
+
+        def self.extract_video_page(url)
+          return if url.blank?
+
+          # inline onebox 传入的是 HTML 片段，先提取 href 再解析 query。
+          href = CGI.unescapeHTML(url[/href="([^"]+)"/, 1] || url)
+          uri = URI.parse(href)
+          return if uri.query.blank?
+
+          page = URI.decode_www_form(uri.query).to_h["p"]
+          page if page.present? && page.match?(/\A\d+\z/)
+        rescue URI::InvalidURIError, ArgumentError
+          nil
         end
 
         def self.extract_live_room_id(url)
@@ -285,7 +302,8 @@ after_initialize do
           video_match = REGEX.match(@url) || INLINE_REGEX.match(@url)
           if video_match
             video_id = video_match[2]
-            return self.class.iframe_html(video_id)
+            page = self.class.extract_video_page(@url)
+            return self.class.iframe_html(video_id, page)
           end
 
           live_match = LIVE_REGEX.match(@url) || LIVE_INLINE_REGEX.match(@url)
@@ -321,11 +339,14 @@ after_initialize do
         parent.text.strip == href
       next unless block_link || classes.include?("onebox")
 
+      page = nil
       case uri.host
       when "b23.tv"
         video_id = ::Onebox::Engine::BilibiliOnebox.resolve_short_link(href)
+        page = ::Onebox::Engine::BilibiliOnebox.extract_video_page(href)
       when "www.bilibili.com", "m.bilibili.com"
         video_id = ::Onebox::Engine::BilibiliOnebox.extract_video_id(href)
+        page = ::Onebox::Engine::BilibiliOnebox.extract_video_page(href)
       when "live.bilibili.com"
         input_id = ::Onebox::Engine::BilibiliOnebox.extract_live_room_id(href)
         room_id = ::Onebox::Engine::BilibiliOnebox.resolve_live_room_id(input_id) if input_id
@@ -333,7 +354,7 @@ after_initialize do
 
       iframe =
         if video_id
-          ::Onebox::Engine::BilibiliOnebox.iframe_html(video_id)
+          ::Onebox::Engine::BilibiliOnebox.iframe_html(video_id, page)
         elsif room_id
           ::Onebox::Engine::BilibiliOnebox.live_iframe_html(room_id)
         end
