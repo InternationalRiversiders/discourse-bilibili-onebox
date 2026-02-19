@@ -2,23 +2,19 @@
 
 ## Introduction
 
-| | | |
-| --- | --- | --- |
-| :discourse: | **Summary** | **Discourse Bilibili Onebox** lets any Discourse community play Bilibili videos inline without leaving the topic. |
-| :hammer_and_wrench: | **Repository** | [https://github.com/scavin/discourse-bilibili-onebox/](https://github.com/scavin/discourse-bilibili-onebox/) |
-| :movie_camera: | **Demo** | [https://meta.appinn.net/t/topic/55832](https://meta.appinn.net/t/topic/55832) |
-| :open_book: | **Install guide** | [How to install plugins in Discourse](https://meta.discourse.org/t/install-plugins-in-discourse/19157) |
+Discourse plugin for embedding Bilibili videos and live rooms inline.
 
-The code is intentionally tiny (AI-assisted) and already powers the Appinn community. Videos **never** autoplay.
+- Video links: `https://www.bilibili.com/video/...`, `https://m.bilibili.com/video/...`
+- Short links: `https://b23.tv/...`
+- Live links: `https://live.bilibili.com/...` and `https://live.bilibili.com/blanc/...`
 
-`[date=2025-11-20 timezone="Asia/Shanghai"]` Support for `b23.tv` short links is available.
+Videos do **not** autoplay.
 
-### Installation
+## Installation
 
-Edit `app.yml` and locate the `Plugins go here` section:
+Edit `app.yml` in `plugins` section:
 
-```
-## Plugins go here
+```yml
 hooks:
   after_code:
     - exec:
@@ -26,50 +22,62 @@ hooks:
         cmd:
           - mkdir -p plugins
           - git clone https://github.com/discourse/docker_manager.git
-```
-
-Add the plugin clone command to the end of that block:
-
-```
-- git clone https://github.com/scavin/discourse-bilibili-onebox.git
+          - git clone https://github.com/scavin/discourse-bilibili-onebox.git
 ```
 
 Then rebuild:
 
-```
+```bash
 ./launcher rebuild app
 ```
 
-### Usage
+## Behavior
 
-Paste a Bilibili URL on its own line inside the composer. Links copied from the mobile share dialog also work. Examples:
+### On create/edit (before save)
 
-* `https://www.bilibili.com/video/BV1WEgJzMEK3/?spm_id_from=333.1387.homepage.video_card.click`
-* `https://www.bilibili.com/video/BV1WEgJzMEK3/?spm_id_from=333.1387.homepage.video_card.click&vd_source=b0a719e1950c150a97859195679d417a`
-* `https://www.bilibili.com/video/BV1WEgJzMEK3/`
-* `https://www.bilibili.com/video/BV1WEgJzMEK3`
-* `https://b23.tv/hiS7rgR`
+For standalone Bilibili video links (one link per line):
 
-The old bug where URLs without a trailing slash refused to render has been fixed.
+- Long links are normalized to canonical form:  
+  `https://www.bilibili.com/video/<BVID>`
+- Query params are cleaned to keep only `p` (if numeric)
+- `b23.tv` links are resolved to long links first, then cleaned with the same rule
+- If short-link resolving fails, original short link is kept (fallback path)
 
-### Allowed iframes
+### On display
 
-![Allowed iframes configuration](./Screen-20250107100857@2x.jpg)
+- Matched Bilibili links are rendered as iframe player
+- Live room links are rendered as live iframe player
 
-```
+## Usage
+
+Paste links on their own line in the composer.
+
+Examples:
+
+- `https://www.bilibili.com/video/BV1de6CBJED3/?spm_id_from=333.788.videopod.episodes&vd_source=xxx&p=108`
+- `https://b23.tv/hiS7rgR`
+- `https://live.bilibili.com/12345`
+
+## Required site setting
+
+In admin settings (`allowed_iframes`), include:
+
+```text
 https://player.bilibili.com/
 https://www.bilibili.com/
 ```
 
-### Demo
+## Troubleshooting
 
-https://meta.appinn.net/t/topic/55832
+If you see iframe with `data-unsanitized-src` but no `src`:
 
-### Maintenance plan
+1. Re-check `allowed_iframes`
+2. Re-save or rebake the target posts
+3. Check for plugin conflicts (for example, video-processing plugins)
 
-Maintenance continues as long as Bilibili allows embeds and the Appinn forum keeps running.
+## Demo
 
-- [x] Add `b23.tv` short-link support
+- https://meta.appinn.net/t/topic/55832
 
 ---
 

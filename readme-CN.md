@@ -2,23 +2,19 @@
 
 ## 简介
 
-| | | |
-| --- | --- | --- |
-| :discourse: | **摘要** | **Discourse Bilibili Onebox** 是一个可以让 Discourse 社区直接播放 Bilibili 视频的插件。 |
-| :hammer_and_wrench: | **项目库链接** | [https://github.com/scavin/discourse-bilibili-onebox/](https://github.com/scavin/discourse-bilibili-onebox/) |
-| :movie_camera: | **Demo** | [https://meta.appinn.net/t/topic/55832](https://meta.appinn.net/t/topic/55832) |
-| :open_book: | **安装指南（英文）** | [How to install plugins in Discourse](https://meta.discourse.org/t/install-plugins-in-discourse/19157) |
+这是一个用于在 Discourse 内联播放 Bilibili 视频/直播的插件。
 
-代码很简单，由 AI 生成，已经在小众软件论坛使用。**不会**自动播放。
+- 视频链接：`https://www.bilibili.com/video/...`、`https://m.bilibili.com/video/...`
+- 短链接：`https://b23.tv/...`
+- 直播链接：`https://live.bilibili.com/...`、`https://live.bilibili.com/blanc/...`
 
-`[date=2025-11-20 timezone="Asia/Shanghai"]` 已支持 `b23.tv` 短链接
+视频**不会**自动播放。
 
-### 安装方式
+## 安装
 
-在 `app.yml` 文件的 `Plugins go here` 部分
+在 `app.yml` 的插件部分添加：
 
-```
-## Plugins go here
+```yml
 hooks:
   after_code:
     - exec:
@@ -26,50 +22,62 @@ hooks:
         cmd:
           - mkdir -p plugins
           - git clone https://github.com/discourse/docker_manager.git
+          - git clone https://github.com/scavin/discourse-bilibili-onebox.git
 ```
 
-最后一行添加
+然后重建：
 
-```
-- git clone https://github.com/scavin/discourse-bilibili-onebox.git
-```
-
-然后重建容器：
-
-```
+```bash
 ./launcher rebuild app
 ```
 
-### 使用方式
+## 行为说明
 
-直接在编辑器中粘贴 B 站视频即可，**需要单独一行**，支持从 B 站移动端分享的链接。具体如下：
+### 发帖/编辑（入库前）
 
-* `https://www.bilibili.com/video/BV1WEgJzMEK3/?spm_id_from=333.1387.homepage.video_card.click`
-* `https://www.bilibili.com/video/BV1WEgJzMEK3/?spm_id_from=333.1387.homepage.video_card.click&vd_source=b0a719e1950c150a97859195679d417a`
-* `https://www.bilibili.com/video/BV1WEgJzMEK3/`
-* `https://www.bilibili.com/video/BV1WEgJzMEK3`
-* `https://b23.tv/hiS7rgR`
+针对“单独一行”的 B 站视频链接：
 
-此问题已修复。<s>目前有个 bug，不带 `/` 结尾的链接不会工作，手动加上 `/` 即可。</s>
+- 长链接会规范化为：  
+  `https://www.bilibili.com/video/<BVID>`
+- 查询参数只保留 `p`（且必须是数字）
+- `b23.tv` 会先解析为长链接，再执行同样清洗规则
+- 若短链接解析失败，则保留原短链接（走兜底路径）
 
-### allowed iframes 设置
+### 帖子展示
 
-https://h1.appinn.me/file/1736215861521_Screen-20250107100857@2x.jpg
+- 命中的 B 站链接会渲染为 iframe 播放器
+- 直播链接会渲染为直播 iframe 播放器
 
-```
+## 使用方式
+
+在编辑器中将链接单独占一行粘贴。
+
+示例：
+
+- `https://www.bilibili.com/video/BV1de6CBJED3/?spm_id_from=333.788.videopod.episodes&vd_source=xxx&p=108`
+- `https://b23.tv/hiS7rgR`
+- `https://live.bilibili.com/12345`
+
+## 必要配置
+
+后台 `allowed_iframes` 需包含：
+
+```text
 https://player.bilibili.com/
 https://www.bilibili.com/
 ```
 
-### 使用效果
+## 排查建议
 
-https://meta.appinn.net/t/topic/55832
+如果看到 iframe 只有 `data-unsanitized-src`、没有 `src`：
 
-### 维护计划
+1. 检查 `allowed_iframes` 是否正确
+2. 对目标帖子重新保存或 `rebake`
+3. 检查是否存在插件冲突（例如其他视频处理插件）
 
-在 B 站支持外链，且论坛正常的情况下会一直维护下去。
+## 使用效果
 
-- [x] 计划支持短链接 `b23.tv`。
+- https://meta.appinn.net/t/topic/55832
 
 ---
 
