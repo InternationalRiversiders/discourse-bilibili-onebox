@@ -38,7 +38,7 @@ after_initialize do
         end
 
         def self.extract_video_id(url)
-          match = REGEX.match(url)
+          match = REGEX.match(url.to_s)
           match && match[2]
         end
 
@@ -46,7 +46,8 @@ after_initialize do
           return if url.blank?
 
           # inline onebox 传入的是 HTML 片段，先提取 href 再解析 query。
-          href = CGI.unescapeHTML(url[/href="([^"]+)"/, 1] || url)
+          input = url.to_s
+          href = CGI.unescapeHTML(input[/href="([^"]+)"/, 1] || input)
           uri = URI.parse(href)
           return if uri.query.blank?
 
@@ -57,7 +58,7 @@ after_initialize do
         end
 
         def self.extract_live_room_id(url)
-          match = LIVE_REGEX.match(url)
+          match = LIVE_REGEX.match(url.to_s)
           match && match[1]
         end
 
