@@ -22,7 +22,7 @@ hooks:
         cmd:
           - mkdir -p plugins
           - git clone https://github.com/discourse/docker_manager.git
-          - git clone https://github.com/scavin/discourse-bilibili-onebox.git
+          - git clone https://github.com/JackZ144/discourse-bilibili-onebox.git
 ```
 
 Then rebuild:
@@ -66,6 +66,17 @@ In admin settings (`allowed_iframes`), include:
 https://player.bilibili.com/
 https://www.bilibili.com/
 ```
+
+## Plugin Settings
+
+After installing the plugin, you can configure these options in Admin > Plugins > Bilibili Onebox:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `bilibili_onebox_enabled` | true | Enable/disable the plugin |
+| `bilibili_onebox_resolve_short_links` | true | Auto-resolve b23.tv short links |
+| `bilibili_onebox_resolve_live_short_ids` | true | Auto-resolve live room short IDs |
+| `bilibili_onebox_cache_duration` | 86400 | Cache duration in seconds (default: 1 day) |
 
 ## Troubleshooting
 
