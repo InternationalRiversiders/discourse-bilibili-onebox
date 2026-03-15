@@ -1,7 +1,11 @@
 # name: discourse-bilibili-onebox
 # about: A Discourse plugin to embed Bilibili videos. Modified by Jackzhang144.
-# version: 1.3
+# version: 1.4
 # authors: Appinn, modified by Jackzhang144.
+# url: https://github.com/JackZ144/discourse-bilibili-onebox
+# required_version: 2.9.0
+
+enabled_site_setting :bilibili_onebox_enabled
 
 # frozen_string_literal: true
 
@@ -19,6 +23,9 @@ register_css <<~CSS
 CSS
 
 after_initialize do
+  # Skip if plugin is disabled
+  next unless SiteSetting.bilibili_onebox_enabled
+
   module ::Onebox
     module Engine
       class BilibiliOnebox
@@ -122,7 +129,7 @@ after_initialize do
             short_id = data.is_a?(Hash) ? data["short_id"] : nil
 
             if code == 0 && real_room_id.present?
-              Discourse.cache.write(cache_key, real_room_id, expires_in: 1.day)
+              Discourse.cache.write(cache_key, real_room_id, expires_in: SiteSetting.bilibili_onebox_cache_duration.seconds)
               if short_id.present? && short_id.to_s != "0" && short_id.to_s != real_room_id.to_s
                 Rails.logger.warn(
                   "[discourse-bilibili-onebox] live room resolved short id: #{input_id} -> #{real_room_id} " \
@@ -226,7 +233,7 @@ after_initialize do
             video_id = extract_video_id(resolved) if resolved
             page = extract_video_page(resolved) if resolved
             info = { video_id: video_id, page: page, page_checked: true }
-            Discourse.cache.write(cache_key, info, expires_in: 1.day) if video_id.present?
+            Discourse.cache.write(cache_key, info, expires_in: SiteSetting.bilibili_onebox_cache_duration.seconds) if video_id.present?
             if video_id.present?
               Rails.logger.warn(
                 "[discourse-bilibili-onebox] short link resolved: #{slug} -> #{info.inspect}",
@@ -428,11 +435,12 @@ after_initialize do
   # 发帖落库前：短链展开 + 视频链接查询参数清洗。
   on(:before_create_post) do |post, _params|
     original_raw = post.raw
-    expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(original_raw)
+    expanded_raw = original_raw
+    expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(original_raw) if SiteSetting.bilibili_onebox_resolve_short_links
     expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
-    expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw)
+    expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_live_short_ids
     if expanded_raw != original_raw
-      Rails.logger.warn(
+      Rails.logger.info(
         "[discourse-bilibili-onebox] expanded links before create (user_id=#{post.user_id})",
         )
     end
@@ -466,9 +474,9 @@ after_initialize do
               )
 
             # 提前规范化短链，确保编辑走标准的校验/修订/烘焙流程。
-            expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(raw)
-            expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
-            expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw)
+            expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(raw) if SiteSetting.bilibili_onebox_resolve_short_links
+            expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw || raw)
+            expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_live_short_ids
             if expanded_raw != raw
               Rails.logger.warn(
                 "[discourse-bilibili-onebox] expanded links before revise " \

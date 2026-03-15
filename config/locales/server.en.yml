@@ -1,0 +1,6 @@
+en:
+  site_settings:
+    bilibili_onebox_enabled: "Enable Bilibili onebox embedding"
+    bilibili_onebox_cache_duration: "Cache duration in seconds for resolved short links (default: 86400 = 1 day)"
+    bilibili_onebox_resolve_short_links: "Automatically resolve b23.tv short links to full URLs"
+    bilibili_onebox_resolve_live_short_ids: "Automatically resolve live room short IDs to room IDs"
