@@ -286,7 +286,7 @@ after_initialize do
           nil
         end
 
-        # 将 raw 文本中“单独成行”的 b23 短链接展开为完整的 Bilibili 视频链接。
+        # 将 raw 文本中"单独成行"的 b23 短链接展开为完整的 Bilibili 视频链接。
         def self.expand_short_links(raw)
           return raw if raw.blank?
 
@@ -330,8 +330,8 @@ after_initialize do
           raw
             .lines
             .map do |line|
-              newline = line.end_with?(“\n”) ? “\n” : “”
-              content = line.delete_suffix(“\n”)
+              newline = line.end_with?("\n") ? "\n" : ""
+              content = line.delete_suffix("\n")
               stripped = content.strip
               next line unless stripped.match?(REGEX)
 
@@ -344,27 +344,27 @@ after_initialize do
               trailing = content[/\s*\z/]
               # 保留 p 分P参数和 t 时间参数。
               query_parts = []
-              query_parts << “p=#{p}” if p.present?
-              query_parts << “t=#{t}” if t.present?
-              query_suffix = query_parts.any? ? “?#{query_parts.join('&')}” : “”
-              sanitized_url = “https://www.bilibili.com/video/#{video_id}#{query_suffix}”
+              query_parts << "p=#{p}" if p.present?
+              query_parts << "t=#{t}" if t.present?
+              query_suffix = query_parts.any? ? "?#{query_parts.join('&')}" : ""
+              sanitized_url = "https://www.bilibili.com/video/#{video_id}#{query_suffix}"
               Rails.logger.info(
-                “[discourse-bilibili-onebox] video link sanitized: #{stripped} -> #{sanitized_url}”,
+                "[discourse-bilibili-onebox] video link sanitized: #{stripped} -> #{sanitized_url}",
                 )
-              “#{leading}#{sanitized_url}#{trailing}#{newline}”
+              "#{leading}#{sanitized_url}#{trailing}#{newline}"
             end
             .join
         end
 
-        # 将 raw 文本中”单独成行”的直播链接短号转换为真实房间号（保留原有查询参数）。
+        # 将 raw 文本中"单独成行"的直播链接短号转换为真实房间号（保留原有查询参数）。
         def self.expand_live_short_links(raw)
           return raw if raw.blank?
 
           raw
             .lines
             .map do |line|
-              newline = line.end_with?(“\n”) ? “\n” : “”
-              content = line.delete_suffix(“\n”)
+              newline = line.end_with?("\n") ? "\n" : ""
+              content = line.delete_suffix("\n")
               stripped = content.strip
               match = LIVE_REGEX.match(stripped)
               next line unless match
@@ -377,12 +377,12 @@ after_initialize do
 
               begin
                 uri = URI.parse(stripped)
-                new_path = uri.path.sub(%r{/\d+}, “/#{room_id}”)
+                new_path = uri.path.sub(%r{/\d+}, "/#{room_id}")
                 next line if new_path == uri.path
                 uri.path = new_path
-                expanded = “#{leading}#{uri}#{trailing}#{newline}”
+                expanded = "#{leading}#{uri}#{trailing}#{newline}"
                 Rails.logger.info(
-                  “[discourse-bilibili-onebox] live link expanded: #{stripped} -> #{uri}”,
+                  "[discourse-bilibili-onebox] live link expanded: #{stripped} -> #{uri}",
                   )
                 expanded
               rescue URI::InvalidURIError
