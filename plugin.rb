@@ -36,6 +36,8 @@ after_initialize do
         SHORT_LINK_REGEX = %r{\Ahttps?://b23\.tv/[A-Za-z0-9]+/?(?:\?.*)?\z}
         LIVE_REGEX = %r{\Ahttps?://live\.bilibili\.com/(?:blanc/)?(\d+)(?:[/?#].*)?\z}
         LIVE_INLINE_REGEX = /href="https?:\/\/live\.bilibili\.com\/(?:blanc\/)?(\d+)(?:[\/?#].*)?"[^>]*?class="inline-onebox"/
+        # 用于 raw 文本中匹配 Bilibili 链接（视频、短链接、直播）
+        ALL_LINK_REGEX = Regexp.union(REGEX, SHORT_LINK_REGEX, LIVE_REGEX)
         matches_regexp Regexp.union(REGEX, INLINE_REGEX, LIVE_REGEX, LIVE_INLINE_REGEX)
 
         def self.iframe_html(video_id, page = nil, time = nil)
@@ -328,15 +330,6 @@ after_initialize do
         def self.wrap_inline_bilibili_links(raw)
           return raw if raw.blank?
 
-          # 匹配视频链接、短链接、直播链接
-          bilibili_link_regex = %r{
-            (https?://(?:www|m)\.bilibili\.com/video/[A-Za-z0-9]+(?:[/?#].*)?)
-            |
-            (https?://b23\.tv/[A-Za-z0-9]+/?(?:\?.*)?)
-            |
-            (https?://live\.bilibili\.com/(?:blanc/)?\d+(?:[/?#].*)?)
-          }x
-
           raw
             .lines
             .map do |line|
@@ -345,18 +338,18 @@ after_initialize do
               stripped = content.strip
 
               # 跳过已经满足独立成行条件的链接
-              next line if stripped.match?(bilibili_link_regex)
+              next line if stripped.match?(ALL_LINK_REGEX)
 
               # 查找行内包含的 Bilibili 链接
-              link_match = content.match(bilibili_link_regex)
+              link_match = content.match(ALL_LINK_REGEX)
               if link_match
                 match_start, match_end = link_match.begin(0), link_match.end(0)
                 before_link = content[0...match_start]
                 link_text = content[match_start...match_end]
                 after_link = content[match_end..-1]
 
-                # 检查链接前是否空白，且链接不在独立一行
-                if before_link.strip.empty? && !stripped.match?(bilibili_link_regex)
+                # 检查链接前是否空白（链接不在独立一行时）
+                if before_link.strip.empty?
                   # 如果链接在行尾，不需要在后面加换行
                   if after_link.strip.empty?
                     Rails.logger.info(
