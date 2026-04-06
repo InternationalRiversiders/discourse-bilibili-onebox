@@ -340,35 +340,34 @@ after_initialize do
               # 跳过已经满足独立成行条件的链接
               next line if stripped.match?(ALL_LINK_REGEX)
 
-              # 查找行内包含的 Bilibili 链接
-              link_match = content.match(ALL_LINK_REGEX)
-              if link_match
-                match_start, match_end = link_match.begin(0), link_match.end(0)
-                before_link = content[0...match_start]
-                link_text = content[match_start...match_end]
-                after_link = content[match_end..-1]
+              # 从后往前处理所有链接，避免处理前面的链接时影响后面链接的位置
+              matches = content.enum_for(:scan, ALL_LINK_REGEX).map do
+                [Regexp.last_match.begin(0), Regexp.last_match.end(0), Regexp.last_match[0]]
+              end.reverse!
 
-                # 检查链接前是否空白（链接不在独立一行时）
+              result = content.dup
+              matches.each do |match_start, match_end, link_text|
+                before_link = result[0...match_start]
+                after_link = result[match_end..-1]
+
+                # 检查链接前是否空白（排除整行都是链接的情况）
                 if before_link.strip.empty?
-                  # 如果链接在行尾，不需要在后面加换行
                   if after_link.strip.empty?
+                    # 链接在行尾，只在前面加换行
+                    result = "#{before_link}\n#{link_text}"
                     Rails.logger.info(
                       "[discourse-bilibili-onebox] wrapped inline link (at end): #{link_text}",
                     )
-                    "#{before_link}\n#{link_text}#{newline}"
                   else
-                    # 链接在中间或开头，前后都加换行
+                    # 链接在中间，前后都加换行
+                    result = "#{before_link}\n#{link_text}\n#{after_link}"
                     Rails.logger.info(
                       "[discourse-bilibili-onebox] wrapped inline link: #{link_text}",
                     )
-                    "#{before_link}\n#{link_text}\n#{after_link}#{newline}"
                   end
-                else
-                  line
                 end
-              else
-                line
               end
+              result == content ? line : "#{result}#{newline}"
             end
             .join
         end
