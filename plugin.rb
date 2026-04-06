@@ -324,6 +324,62 @@ after_initialize do
             .join
         end
 
+        # 将行内 Bilibili 链接（前后有空白但不在独立一行）转换为块级链接
+        def self.wrap_inline_bilibili_links(raw)
+          return raw if raw.blank?
+
+          # 匹配视频链接、短链接、直播链接
+          bilibili_link_regex = %r{
+            (https?://(?:www|m)\.bilibili\.com/video/[A-Za-z0-9]+(?:[/?#].*)?)
+            |
+            (https?://b23\.tv/[A-Za-z0-9]+/?(?:\?.*)?)
+            |
+            (https?://live\.bilibili\.com/(?:blanc/)?\d+(?:[/?#].*)?)
+          }x
+
+          raw
+            .lines
+            .map do |line|
+              newline = line.end_with?("\n") ? "\n" : ""
+              content = line.delete_suffix("\n")
+              stripped = content.strip
+
+              # 跳过已经满足独立成行条件的链接
+              next line if stripped.match?(bilibili_link_regex)
+
+              # 查找行内包含的 Bilibili 链接
+              link_match = content.match(bilibili_link_regex)
+              if link_match
+                match_start, match_end = link_match.begin(0), link_match.end(0)
+                before_link = content[0...match_start]
+                link_text = content[match_start...match_end]
+                after_link = content[match_end..-1]
+
+                # 检查链接前是否空白，且链接不在独立一行
+                if before_link.strip.empty? && !stripped.match?(bilibili_link_regex)
+                  # 如果链接在行尾，不需要在后面加换行
+                  if after_link.strip.empty?
+                    Rails.logger.info(
+                      "[discourse-bilibili-onebox] wrapped inline link (at end): #{link_text}",
+                    )
+                    "#{before_link}\n#{link_text}#{newline}"
+                  else
+                    # 链接在中间或开头，前后都加换行
+                    Rails.logger.info(
+                      "[discourse-bilibili-onebox] wrapped inline link: #{link_text}",
+                    )
+                    "#{before_link}\n#{link_text}\n#{after_link}#{newline}"
+                  end
+                else
+                  line
+                end
+              else
+                line
+              end
+            end
+            .join
+        end
+
         def self.sanitize_video_links(raw)
           return raw if raw.blank?
 
@@ -467,6 +523,7 @@ after_initialize do
     original_raw = post.raw
     expanded_raw = original_raw
     expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(original_raw) if SiteSetting.bilibili_onebox_resolve_short_links
+    expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(expanded_raw)
     expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
     expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_live_short_ids
     if expanded_raw != original_raw
