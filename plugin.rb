@@ -36,9 +36,11 @@ after_initialize do
         SHORT_LINK_REGEX = %r{\Ahttps?://b23\.tv/[A-Za-z0-9]+/?(?:\?.*)?\z}
         LIVE_REGEX = %r{\Ahttps?://live\.bilibili\.com/(?:blanc/)?(\d+)(?:[/?#].*)?\z}
         LIVE_INLINE_REGEX = /href="https?:\/\/live\.bilibili\.com\/(?:blanc\/)?(\d+)(?:[\/?#].*)?"[^>]*?class="inline-onebox"/
-        # 用于 raw 文本中匹配 Bilibili 链接（视频、短链接、直播）
-        ALL_LINK_REGEX = Regexp.union(REGEX, SHORT_LINK_REGEX, LIVE_REGEX)
-        matches_regexp Regexp.union(REGEX, INLINE_REGEX, LIVE_REGEX, LIVE_INLINE_REGEX)
+        HUYA_REGEX = %r{\Ahttps?://(?:www\.)?huya\.com/(\d+)(?:[/?#].*)?\z}
+        HUYA_INLINE_REGEX = /href="https?:\/\/(?:www\.)?huya\.com\/(\d+)(?:[\/?#].*)?"[^>]*?class="inline-onebox"/
+        # 用于 raw 文本中匹配 Bilibili 链接（视频、短链接、直播、虎牙）
+        ALL_LINK_REGEX = Regexp.union(REGEX, SHORT_LINK_REGEX, LIVE_REGEX, HUYA_REGEX)
+        matches_regexp Regexp.union(REGEX, INLINE_REGEX, LIVE_REGEX, LIVE_INLINE_REGEX, HUYA_REGEX, HUYA_INLINE_REGEX)
 
         def self.iframe_html(video_id, page = nil, time = nil)
           # 保留原链接中的 p 分P参数和 t 时间参数（用于精准空降）。
@@ -85,6 +87,18 @@ after_initialize do
         def self.extract_live_room_id(url)
           match = LIVE_REGEX.match(url.to_s)
           match && match[1]
+        end
+
+        def self.extract_huya_room_id(url)
+          match = HUYA_REGEX.match(url.to_s)
+          match && match[1]
+        end
+
+        def self.huya_iframe_html(room_id)
+          "<iframe class='bilibili-onebox' " \
+            "src='https://liveshare.huya.com/iframe/#{room_id}' " \
+            "scrolling='no' border='0' frameborder='no' width='100%' height='100%' " \
+            "allow='autoplay; encrypted-media' allowfullscreen='true'></iframe>"
         end
 
         def self.live_iframe_html(room_id)
@@ -456,6 +470,12 @@ after_initialize do
             return self.class.live_iframe_html(room_id) if room_id.present?
           end
 
+          huya_match = HUYA_REGEX.match(@url) || HUYA_INLINE_REGEX.match(@url)
+          if huya_match
+            room_id = huya_match[1]
+            return self.class.huya_iframe_html(room_id)
+          end
+
           nil
         end
       end
@@ -497,13 +517,19 @@ after_initialize do
       when "live.bilibili.com"
         input_id = ::Onebox::Engine::BilibiliOnebox.extract_live_room_id(href)
         room_id = ::Onebox::Engine::BilibiliOnebox.resolve_live_room_id(input_id) if input_id
+        iframe_type = :bilibili_live
+      when "huya.com", "www.huya.com"
+        room_id = ::Onebox::Engine::BilibiliOnebox.extract_huya_room_id(href)
+        iframe_type = :huya_live
       end
 
       iframe =
         if video_id
           ::Onebox::Engine::BilibiliOnebox.iframe_html(video_id, page, time)
-        elsif room_id
+        elsif room_id && iframe_type == :bilibili_live
           ::Onebox::Engine::BilibiliOnebox.live_iframe_html(room_id)
+        elsif room_id && iframe_type == :huya_live
+          ::Onebox::Engine::BilibiliOnebox.huya_iframe_html(room_id)
         end
       next unless iframe
       link.replace(iframe)
@@ -540,7 +566,8 @@ after_initialize do
             stripped = line.strip
             stripped.match?(::Onebox::Engine::BilibiliOnebox::SHORT_LINK_REGEX) ||
               stripped.match?(::Onebox::Engine::BilibiliOnebox::REGEX) ||
-              stripped.match?(::Onebox::Engine::BilibiliOnebox::LIVE_REGEX)
+              stripped.match?(::Onebox::Engine::BilibiliOnebox::LIVE_REGEX) ||
+              stripped.match?(::Onebox::Engine::BilibiliOnebox::HUYA_REGEX)
           end
           if matched_lines > 0
             editor_id = editor&.id
