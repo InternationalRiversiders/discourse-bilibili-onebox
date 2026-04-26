@@ -40,13 +40,17 @@ after_initialize do
         HUYA_INLINE_REGEX = /href="https?:\/\/(?:www\.)?huya\.com\/(\d+)(?:[\/?#].*)?"[^>]*?class="inline-onebox"/
         # 用于 raw 文本中匹配 Bilibili 链接（视频、短链接、直播、虎牙）
         ALL_LINK_REGEX = Regexp.union(REGEX, SHORT_LINK_REGEX, LIVE_REGEX, HUYA_REGEX)
+        # 不带 \A/\z 锚点的版本，用于在行内文本中扫描链接。
+        REGEX_SCAN = %r{https?://(www|m)\.bilibili\.com/video/([A-Za-z0-9]+)(?:[/?#]\S*)?}
+        SHORT_LINK_SCAN = %r{https?://b23\.tv/[A-Za-z0-9]+/?(?:\?\S*)?}
+        LIVE_SCAN = %r{https?://live\.bilibili\.com/(?:blanc/)?(\d+)(?:[/?#]\S*)?}
+        HUYA_SCAN = %r{https?://(?:www\.)?huya\.com/(\d+)(?:[/?#]\S*)?}
+        ALL_LINK_SCAN_REGEX = Regexp.union(REGEX_SCAN, SHORT_LINK_SCAN, LIVE_SCAN, HUYA_SCAN)
         matches_regexp Regexp.union(REGEX, INLINE_REGEX, LIVE_REGEX, LIVE_INLINE_REGEX, HUYA_REGEX, HUYA_INLINE_REGEX)
 
-        def self.iframe_html(video_id, page = nil, time = nil)
-          # 保留原链接中的 p 分P参数和 t 时间参数（用于精准空降）。
+        def self.iframe_html(video_id, page = nil)
           page_query = page.present? ? "&p=#{page}" : ""
-          time_query = time.present? ? "&time=#{time}" : ""
-          "<iframe class='bilibili-onebox' src='https://player.bilibili.com/player.html?bvid=#{video_id}#{page_query}#{time_query}&high_quality=1&autoplay=0' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allowfullscreen='true'></iframe>"
+          "<iframe class='bilibili-onebox' src='https://player.bilibili.com/player.html?bvid=#{video_id}#{page_query}&high_quality=1&autoplay=0' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allowfullscreen='true'></iframe>"
         end
 
         def self.extract_video_id(url)
@@ -65,21 +69,6 @@ after_initialize do
 
           page = URI.decode_www_form(uri.query).to_h["p"]
           page if page.present? && page.match?(/\A\d+\z/)
-        rescue URI::InvalidURIError, ArgumentError
-          nil
-        end
-
-        # 提取视频时间点参数 t（单位：秒），用于精准空降。
-        def self.extract_video_time(url)
-          return if url.blank?
-
-          input = url.to_s
-          href = CGI.unescapeHTML(input[/href="([^"]+)"/, 1] || input)
-          uri = URI.parse(href)
-          return if uri.query.blank?
-
-          time = URI.decode_www_form(uri.query).to_h["t"]
-          time if time.present? && time.match?(/\A\d+\z/)
         rescue URI::InvalidURIError, ArgumentError
           nil
         end
@@ -264,8 +253,7 @@ after_initialize do
               )
             video_id = extract_video_id(resolved) if resolved
             page = extract_video_page(resolved) if resolved
-            time = extract_video_time(resolved) if resolved
-            info = { video_id: video_id, page: page, time: time, page_checked: true }
+            info = { video_id: video_id, page: page, page_checked: true }
             Discourse.cache.write(cache_key, info, expires_in: SiteSetting.bilibili_onebox_cache_duration.seconds) if video_id.present?
             if video_id.present?
               Rails.logger.info(
@@ -325,12 +313,10 @@ after_initialize do
 
               leading = content[/\A\s*/]
               trailing = content[/\s*\z/]
-              # 解析成功时优先使用最终跳转链接里的 p 和 t 参数。
+              # 解析成功时优先使用最终跳转链接里的 p 参数。
               p = (info && info[:page]) || extract_video_page(stripped)
-              t = extract_video_time(stripped)
               query_parts = []
               query_parts << "p=#{p}" if p.present?
-              query_parts << "t=#{t}" if t.present?
               query_suffix = query_parts.any? ? "?#{query_parts.join('&')}" : ""
               Rails.logger.info(
                 "[discourse-bilibili-onebox] short link expanded: #{stripped} -> #{video_id}",
@@ -355,7 +341,7 @@ after_initialize do
               next line if stripped.match?(ALL_LINK_REGEX)
 
               # 从后往前处理所有链接，避免处理前面的链接时影响后面链接的位置
-              matches = content.enum_for(:scan, ALL_LINK_REGEX).map do
+              matches = content.enum_for(:scan, ALL_LINK_SCAN_REGEX).map do
                 [Regexp.last_match.begin(0), Regexp.last_match.end(0), Regexp.last_match[0]]
               end.reverse!
 
@@ -400,14 +386,11 @@ after_initialize do
               video_id = extract_video_id(stripped)
               next line if video_id.blank?
               p = extract_video_page(stripped)
-              t = extract_video_time(stripped)
 
               leading = content[/\A\s*/]
               trailing = content[/\s*\z/]
-              # 保留 p 分P参数和 t 时间参数。
               query_parts = []
               query_parts << "p=#{p}" if p.present?
-              query_parts << "t=#{t}" if t.present?
               query_suffix = query_parts.any? ? "?#{query_parts.join('&')}" : ""
               sanitized_url = "https://www.bilibili.com/video/#{video_id}#{query_suffix}"
               Rails.logger.info(
@@ -459,8 +442,7 @@ after_initialize do
           if video_match
             video_id = video_match[2]
             page = self.class.extract_video_page(@url)
-            time = self.class.extract_video_time(@url)
-            return self.class.iframe_html(video_id, page, time)
+            return self.class.iframe_html(video_id, page)
           end
 
           live_match = LIVE_REGEX.match(@url) || LIVE_INLINE_REGEX.match(@url)
@@ -503,17 +485,18 @@ after_initialize do
       next unless block_link || classes.include?("onebox")
 
       page = nil
-      time = nil
+      video_id = nil
+      info = nil
+      room_id = nil
+      iframe_type = nil
       case uri.host
       when "b23.tv"
         info = ::Onebox::Engine::BilibiliOnebox.resolve_short_link_info(href)
         video_id = info && info[:video_id]
         page = (info && info[:page]) || ::Onebox::Engine::BilibiliOnebox.extract_video_page(href)
-        time = (info && info[:time]) || ::Onebox::Engine::BilibiliOnebox.extract_video_time(href)
       when "www.bilibili.com", "m.bilibili.com"
         video_id = ::Onebox::Engine::BilibiliOnebox.extract_video_id(href)
         page = ::Onebox::Engine::BilibiliOnebox.extract_video_page(href)
-        time = (info && info[:time]) || ::Onebox::Engine::BilibiliOnebox.extract_video_time(href)
       when "live.bilibili.com"
         input_id = ::Onebox::Engine::BilibiliOnebox.extract_live_room_id(href)
         room_id = ::Onebox::Engine::BilibiliOnebox.resolve_live_room_id(input_id) if input_id
@@ -525,7 +508,7 @@ after_initialize do
 
       iframe =
         if video_id
-          ::Onebox::Engine::BilibiliOnebox.iframe_html(video_id, page, time)
+          ::Onebox::Engine::BilibiliOnebox.iframe_html(video_id, page)
         elsif room_id && iframe_type == :bilibili_live
           ::Onebox::Engine::BilibiliOnebox.live_iframe_html(room_id)
         elsif room_id && iframe_type == :huya_live
@@ -564,10 +547,8 @@ after_initialize do
         if raw.present?
           matched_lines = raw.lines.count do |line|
             stripped = line.strip
-            stripped.match?(::Onebox::Engine::BilibiliOnebox::SHORT_LINK_REGEX) ||
-              stripped.match?(::Onebox::Engine::BilibiliOnebox::REGEX) ||
-              stripped.match?(::Onebox::Engine::BilibiliOnebox::LIVE_REGEX) ||
-              stripped.match?(::Onebox::Engine::BilibiliOnebox::HUYA_REGEX)
+            stripped.match?(::Onebox::Engine::BilibiliOnebox::ALL_LINK_REGEX) ||
+              stripped.match?(::Onebox::Engine::BilibiliOnebox::ALL_LINK_SCAN_REGEX)
           end
           if matched_lines > 0
             editor_id = editor&.id
@@ -582,6 +563,7 @@ after_initialize do
             # 提前规范化短链，确保编辑走标准的校验/修订/烘焙流程。
             expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(raw) if SiteSetting.bilibili_onebox_resolve_short_links
             expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw || raw)
+            expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(expanded_raw)
             expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_live_short_ids
             if expanded_raw != raw
               Rails.logger.info(
