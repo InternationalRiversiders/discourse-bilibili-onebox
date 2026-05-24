@@ -35,6 +35,8 @@ after_initialize do
         SHORT_LINK_REGEX = %r{\Ahttps?://b23\.tv/[A-Za-z0-9]+/?(?:\?.*)?\z}
         LIVE_REGEX = %r{\Ahttps?://live\.bilibili\.com/(?:blanc/)?(\d+)(?:[/?#].*)?\z}
         HUYA_REGEX = %r{\Ahttps?://(?:www\.)?huya\.com/(\d+)(?:[/?#].*)?\z}
+        REQUEST_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " \
+          "(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0"
         # 用于 raw 文本中匹配 Bilibili 链接（视频、短链接、直播、虎牙）
         ALL_LINK_REGEX = Regexp.union(REGEX, SHORT_LINK_REGEX, LIVE_REGEX, HUYA_REGEX)
         # 不带 \A/\z 锚点的版本，用于在行内文本中扫描链接。
@@ -109,9 +111,7 @@ after_initialize do
 
           api_url = URI.parse("https://api.live.bilibili.com/room/v1/Room/get_info?room_id=#{input_id}")
           request_headers = {
-            "User-Agent" =>
-              "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " \
-                "(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+            "User-Agent" => REQUEST_UA,
             "Accept" => "application/json",
           }
 
@@ -222,9 +222,7 @@ after_initialize do
 
           begin
             request_headers = {
-              "User-Agent" =>
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " \
-                  "(KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+              "User-Agent" => REQUEST_UA,
             }
             Rails.logger.info(
               "[discourse-bilibili-onebox] short link request options: " \
