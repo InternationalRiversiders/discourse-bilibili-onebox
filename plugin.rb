@@ -1,6 +1,6 @@
 # name: discourse-bilibili-onebox
 # about: A Discourse plugin to embed Bilibili videos. Modified by Jackzhang144.
-# version: 1.4
+# version: 1.4.1
 # authors: Appinn, modified by Jackzhang144.
 # url: https://github.com/JackZ144/discourse-bilibili-onebox
 # required_version: 2.9.0
