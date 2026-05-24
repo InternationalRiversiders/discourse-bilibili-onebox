@@ -345,28 +345,29 @@ after_initialize do
                 [Regexp.last_match.begin(0), Regexp.last_match.end(0), Regexp.last_match[0]]
               end.reverse!
 
-              result = content.dup
-              matches.each do |match_start, match_end, link_text|
-                before_link = result[0...match_start]
-                after_link = result[match_end..-1]
+              result = "".dup
+              matches.each_with_index do |(match_start, match_end, link_text), idx|
+                before_link = content[0...match_start] if idx.zero?
+                after_link = content[match_end..-1]
 
-                # 检查链接前是否空白（排除整行都是链接的情况）
-                if before_link.strip.empty?
-                  if after_link.strip.empty?
-                    # 链接在行尾，只在前面加换行
-                    result = "#{before_link}\n#{link_text}"
-                    Rails.logger.info(
-                      "[discourse-bilibili-onebox] wrapped inline link (at end): #{link_text}",
-                    )
-                  else
-                    # 链接在中间，前后都加换行
-                    result = "#{before_link}\n#{link_text}\n#{after_link}"
-                    Rails.logger.info(
-                      "[discourse-bilibili-onebox] wrapped inline link: #{link_text}",
-                    )
-                  end
+                result << before_link.to_s
+                has_text_before = idx.zero? ? before_link.to_s.strip.present? : true
+                has_text_after = after_link.present?
+
+                if has_text_before && has_text_after
+                  result << "\n\n#{link_text}\n\n"
+                elsif has_text_before
+                  result << "\n\n#{link_text}"
+                elsif has_text_after
+                  result << "\n#{link_text}\n"
+                else
+                  result << "\n#{link_text}"
                 end
+                Rails.logger.info(
+                  "[discourse-bilibili-onebox] wrapped inline link: #{link_text}",
+                )
               end
+              result << content[(matches.last[1])..-1].to_s
               result == content ? line : "#{result}#{newline}"
             end
             .join
