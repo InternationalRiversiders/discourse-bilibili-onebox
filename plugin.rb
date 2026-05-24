@@ -534,50 +534,27 @@ after_initialize do
   # 实现思路与过程：
   # 1) Discourse 的 :before_edit_post 回调触发时，post 已经被写入，修改 fields[:raw] 无法入库；
   # 2) 因此改为在 PostRevisor#revise! 最早阶段规范化短链，确保进入标准的校验/修订/烘焙流程；
-  # 3) 通过 prepend 覆盖 revise!，只在 raw 中存在短链时才转换并记录日志，避免影响其它编辑；
+  # 3) 通过 prepend 覆盖 revise!，对 raw 做幂等规范化，只在实际变化时记录日志；
   # 4) 最后调用 super 让原有编辑流程继续执行，保证兼容性与一致性。
   module ::DiscourseBilibiliOnebox
     module PostRevisorPatch
       def revise!(editor, fields, opts = {})
         raw = fields[:raw] || fields["raw"]
         if raw.present?
-          matched_lines = raw.lines.count do |line|
-            stripped = line.strip
-            stripped.match?(::Onebox::Engine::BilibiliOnebox::ALL_LINK_REGEX) ||
-              stripped.match?(::Onebox::Engine::BilibiliOnebox::ALL_LINK_SCAN_REGEX)
-          end
-          if matched_lines > 0
-            editor_id = editor&.id
-            editor_username = editor&.username
+          expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(raw) if SiteSetting.bilibili_onebox_resolve_short_links
+          expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(expanded_raw || raw)
+          expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
+          expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_live_short_ids
+          if expanded_raw != raw
             Rails.logger.info(
-              "[discourse-bilibili-onebox] before revise expand links " \
-                "(post_id=#{@post&.id} user_id=#{@post&.user_id} editor_id=#{editor_id} " \
-                "editor_username=#{editor_username} raw_bytes=#{raw.bytesize} " \
-                "matched_lines=#{matched_lines})",
+              "[discourse-bilibili-onebox] expanded links before revise " \
+                "(post_id=#{@post&.id} user_id=#{@post&.user_id} editor_id=#{editor&.id} " \
+                "editor_username=#{editor&.username} raw_bytes=#{raw.bytesize} " \
+                "expanded_bytes=#{expanded_raw.bytesize})",
               )
-
-            # 提前规范化短链，确保编辑走标准的校验/修订/烘焙流程。
-            expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(raw) if SiteSetting.bilibili_onebox_resolve_short_links
-            expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(expanded_raw || raw)
-            expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
-            expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_live_short_ids
-            if expanded_raw != raw
-              Rails.logger.info(
-                "[discourse-bilibili-onebox] expanded links before revise " \
-                  "(post_id=#{@post&.id} user_id=#{@post&.user_id} editor_id=#{editor_id} " \
-                  "editor_username=#{editor_username} raw_bytes=#{raw.bytesize} " \
-                  "expanded_bytes=#{expanded_raw.bytesize})",
-                )
-              fields = fields.dup
-              fields[:raw] = expanded_raw
-              fields["raw"] = expanded_raw if fields.key?("raw")
-            else
-              Rails.logger.info(
-                "[discourse-bilibili-onebox] no links expanded before revise " \
-                  "(post_id=#{@post&.id} user_id=#{@post&.user_id} editor_id=#{editor_id} " \
-                  "editor_username=#{editor_username})",
-                )
-            end
+            fields = fields.dup
+            fields[:raw] = expanded_raw
+            fields["raw"] = expanded_raw if fields.key?("raw")
           end
         end
 
