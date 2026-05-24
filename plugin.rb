@@ -102,7 +102,7 @@ after_initialize do
           cache_key = "bilibili-live-room:#{input_id}"
           cached_room_id = Discourse.cache.read(cache_key)
           if cached_room_id.present?
-            Rails.logger.info(
+            Rails.logger.debug(
               "[discourse-bilibili-onebox] live room cache hit: #{input_id} -> #{cached_room_id}",
               )
             return cached_room_id
@@ -196,13 +196,13 @@ after_initialize do
               nil
             end
           return if slug.blank?
-          Rails.logger.info("[discourse-bilibili-onebox] short link slug: #{slug}")
+          Rails.logger.debug("[discourse-bilibili-onebox] short link slug: #{slug}")
 
           cache_key = "bilibili-short-link:#{slug}"
           cached_info = normalize_short_link_cache(Discourse.cache.read(cache_key))
           if cached_info.present?
             if cached_info[:page_checked]
-              Rails.logger.info(
+              Rails.logger.debug(
                 "[discourse-bilibili-onebox] short link cache hit: #{slug} -> #{cached_info.inspect}",
                 )
               return cached_info
@@ -216,7 +216,7 @@ after_initialize do
 
           # b23 在带尾部 / 时可能返回 200 JSON (-404)，不跳转；强制使用标准化 URL 以确保 302 跳转
           normalized_url = "https://b23.tv/#{slug}"
-          Rails.logger.info(
+          Rails.logger.debug(
             "[discourse-bilibili-onebox] short link normalized: #{url} -> #{normalized_url}",
             )
 
@@ -224,7 +224,7 @@ after_initialize do
             request_headers = {
               "User-Agent" => REQUEST_UA,
             }
-            Rails.logger.info(
+            Rails.logger.debug(
               "[discourse-bilibili-onebox] short link request options: " \
                 "http_verb=get max_redirects=5 timeout=5 headers=#{request_headers.inspect}",
               )
