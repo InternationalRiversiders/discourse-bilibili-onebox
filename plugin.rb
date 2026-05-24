@@ -32,12 +32,9 @@ after_initialize do
         include Onebox::Engine
 
         REGEX = %r{\Ahttps?://(www|m)\.bilibili\.com/video/([A-Za-z0-9]+)(?:[/?#].*)?\z}
-        INLINE_REGEX = /href="https?:\/\/(www|m)\.bilibili\.com\/video\/([A-Za-z0-9]+)(?:[\/?#].*)?"[^>]*?class="inline-onebox"/
         SHORT_LINK_REGEX = %r{\Ahttps?://b23\.tv/[A-Za-z0-9]+/?(?:\?.*)?\z}
         LIVE_REGEX = %r{\Ahttps?://live\.bilibili\.com/(?:blanc/)?(\d+)(?:[/?#].*)?\z}
-        LIVE_INLINE_REGEX = /href="https?:\/\/live\.bilibili\.com\/(?:blanc\/)?(\d+)(?:[\/?#].*)?"[^>]*?class="inline-onebox"/
         HUYA_REGEX = %r{\Ahttps?://(?:www\.)?huya\.com/(\d+)(?:[/?#].*)?\z}
-        HUYA_INLINE_REGEX = /href="https?:\/\/(?:www\.)?huya\.com\/(\d+)(?:[\/?#].*)?"[^>]*?class="inline-onebox"/
         # 用于 raw 文本中匹配 Bilibili 链接（视频、短链接、直播、虎牙）
         ALL_LINK_REGEX = Regexp.union(REGEX, SHORT_LINK_REGEX, LIVE_REGEX, HUYA_REGEX)
         # 不带 \A/\z 锚点的版本，用于在行内文本中扫描链接。
@@ -46,7 +43,7 @@ after_initialize do
         LIVE_SCAN = %r{https?://live\.bilibili\.com/(?:blanc/)?(\d+)(?:[/?#]\S*)?}
         HUYA_SCAN = %r{https?://(?:www\.)?huya\.com/(\d+)(?:[/?#]\S*)?}
         ALL_LINK_SCAN_REGEX = Regexp.union(REGEX_SCAN, SHORT_LINK_SCAN, LIVE_SCAN, HUYA_SCAN)
-        matches_regexp Regexp.union(REGEX, INLINE_REGEX, LIVE_REGEX, LIVE_INLINE_REGEX, HUYA_REGEX, HUYA_INLINE_REGEX)
+        matches_regexp Regexp.union(REGEX, LIVE_REGEX, HUYA_REGEX)
 
         def self.iframe_html(video_id, page = nil)
           page_query = page.present? ? "&p=#{page}" : ""
@@ -439,21 +436,21 @@ after_initialize do
         end
 
         def to_html
-          video_match = REGEX.match(@url) || INLINE_REGEX.match(@url)
+          video_match = REGEX.match(@url)
           if video_match
             video_id = video_match[2]
             page = self.class.extract_video_page(@url)
             return self.class.iframe_html(video_id, page)
           end
 
-          live_match = LIVE_REGEX.match(@url) || LIVE_INLINE_REGEX.match(@url)
+          live_match = LIVE_REGEX.match(@url)
           if live_match
             input_id = live_match[1]
             room_id = self.class.resolve_live_room_id(input_id)
             return self.class.live_iframe_html(room_id) if room_id.present?
           end
 
-          huya_match = HUYA_REGEX.match(@url) || HUYA_INLINE_REGEX.match(@url)
+          huya_match = HUYA_REGEX.match(@url)
           if huya_match
             room_id = huya_match[1]
             return self.class.huya_iframe_html(room_id)
