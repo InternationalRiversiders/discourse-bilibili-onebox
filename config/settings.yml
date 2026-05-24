@@ -7,7 +7,7 @@ plugins:
     client: false
   bilibili_onebox_resolve_short_links:
     default: true
-    client: true
+    client: false
   bilibili_onebox_resolve_live_short_ids:
     default: true
-    client: true
+    client: false
