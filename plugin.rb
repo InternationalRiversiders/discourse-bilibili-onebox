@@ -563,8 +563,8 @@ after_initialize do
 
             # 提前规范化短链，确保编辑走标准的校验/修订/烘焙流程。
             expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(raw) if SiteSetting.bilibili_onebox_resolve_short_links
-            expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw || raw)
-            expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(expanded_raw)
+            expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(expanded_raw || raw)
+            expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
             expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_live_short_ids
             if expanded_raw != raw
               Rails.logger.info(
