@@ -60,7 +60,7 @@ after_initialize do
         def self.extract_video_page(url)
           return if url.blank?
 
-          # inline onebox 传入的是 HTML 片段，先提取 href 再解析 query。
+          # 先尝试从 href 属性提取 URL，fallback 到原文。
           input = url.to_s
           href = CGI.unescapeHTML(input[/href="([^"]+)"/, 1] || input)
           uri = URI.parse(href)
