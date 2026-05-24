@@ -518,8 +518,8 @@ after_initialize do
   # 发帖落库前：短链展开 + 视频链接查询参数清洗。
   on(:before_create_post) do |post, _params|
     original_raw = post.raw
-    expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(original_raw) if SiteSetting.bilibili_onebox_resolve_short_links
-    expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(expanded_raw || original_raw)
+    expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(original_raw)
+    expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_short_links
     expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
     expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_live_short_ids
     if expanded_raw != original_raw
@@ -540,8 +540,8 @@ after_initialize do
       def revise!(editor, fields, opts = {})
         raw = fields[:raw] || fields["raw"]
         if raw.present?
-          expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(raw) if SiteSetting.bilibili_onebox_resolve_short_links
-          expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(expanded_raw || raw)
+          expanded_raw = ::Onebox::Engine::BilibiliOnebox.wrap_inline_bilibili_links(raw)
+          expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_short_links
           expanded_raw = ::Onebox::Engine::BilibiliOnebox.sanitize_video_links(expanded_raw)
           expanded_raw = ::Onebox::Engine::BilibiliOnebox.expand_live_short_links(expanded_raw) if SiteSetting.bilibili_onebox_resolve_live_short_ids
           if expanded_raw != raw
