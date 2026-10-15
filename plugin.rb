@@ -49,7 +49,12 @@ after_initialize do
 
         def self.iframe_html(video_id, page = nil)
           page_query = page.present? ? "&p=#{page}" : ""
-          "<iframe class='bilibili-onebox' src='https://player.bilibili.com/player.html?bvid=#{video_id}#{page_query}&high_quality=1&autoplay=0' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allowfullscreen='true'></iframe>"
+          id_query = "bvid=#{video_id}"
+          av_match = video_id.match(/\Aav([0-9]+)\z/)
+          if av_match
+            id_query = "aid=#{av_match[1]}"
+          end
+          "<iframe class='bilibili-onebox' src='https://player.bilibili.com/player.html?#{id_query}#{page_query}&high_quality=1&autoplay=0' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allowfullscreen='true'></iframe>"
         end
 
         def self.extract_video_id(url)
