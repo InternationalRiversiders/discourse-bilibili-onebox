@@ -4,6 +4,74 @@ require 'minitest/autorun'
 class BilibiliPlayerTest < Minitest::Test
   Engine = Onebox::Engine::BilibiliOnebox
 
+  def setup
+    @original_fetch = Engine.method(:fetch_video_page)
+    Engine.define_singleton_method(:fetch_video_page, ->(*) { "" })
+    clear_metadata
+  end
+
+  def teardown
+    Engine.define_singleton_method(:fetch_video_page, @original_fetch)
+    clear_metadata
+  end
+
+  def clear_metadata
+    %w[av10186015 BV1Px411S7tK BV1GJ411x7h7 av117460158190918].each do |id|
+      Discourse.cache.delete("bilibili-video-metadata:v1:#{id}")
+    end
+  end
+
+  def metadata_html
+    data = { videoData: { aid: 10186015, bvid: 'BV1Px411S7tK', pages: [
+      { page: 1, cid: 16827917 }, { page: 2, cid: 16827918 }
+    ] } }
+    "<script>window.__INITIAL_STATE__=#{JSON.generate(data)};(function(){})();</script>"
+  end
+
+  def test_mobile_context_is_cached_and_selects_exact_part
+    calls = 0
+    html = metadata_html
+    replace_method(Engine, :fetch_video_page, ->(*) { calls += 1; html }) do
+      params = parameters(document('av10186015', '2'))
+      assert_equal '10186015', params['aid']
+      assert_equal 'BV1Px411S7tK', params['bvid']
+      assert_equal '16827918', params['cid']
+      assert_equal '2', params['p']
+      assert_equal '16827917', parameters(document('BV1Px411S7tK'))['cid']
+      refute parameters(document('BV1Px411S7tK', '99')).key?('cid')
+      assert_equal 1, calls
+    end
+  end
+
+  def test_metadata_failure_keeps_working_id_and_uses_short_negative_cache
+    calls = 0
+    replace_method(Engine, :fetch_video_page, ->(*) { calls += 1; raise Timeout::Error }) do
+      2.times do
+        params = parameters(document('av10186015', '2'))
+        assert_equal '10186015', params['aid']
+        assert_equal '2', params['p']
+        refute params.key?('cid')
+      end
+      assert_equal 1, calls
+    end
+  end
+
+  def test_metadata_rejects_wrong_video_and_untrusted_ids
+    assert_nil Engine.parse_video_metadata(metadata_html, 'av117460158190918')
+    assert_nil Engine.parse_video_metadata(metadata_html, 'BV1GJ411x7h7')
+    assert_nil Engine.parse_video_metadata('<script>window.__INITIAL_STATE__=alert(1);</script>', 'av10186015')
+    assert_nil Engine.parse_video_metadata(metadata_html.sub('16827917', '"invalid"').sub('16827918', '-1'), 'av10186015')
+    assert_nil Engine.parse_video_metadata(metadata_html.sub('"page":2', '"page":1'), 'av10186015')
+  end
+
+  def test_bv_conversion_supports_old_and_new_large_ids
+    assert_equal 80433022, Engine.numeric_video_id('BV1GJ411x7h7')
+    assert_equal 10186015, Engine.numeric_video_id('BV1Px411S7tK')
+    assert_equal 117460158190918, Engine.numeric_video_id('BV1bHng6hE4u')
+    assert_equal 10186015, Engine.numeric_video_id('AV10186015')
+    assert_nil Engine.numeric_video_id('BV1000000000')
+  end
+
   def replace_method(owner, name, replacement)
     original = owner.method(name)
     owner.define_singleton_method(name, replacement)

@@ -117,3 +117,23 @@ the inactive Web slot, then switch Nginx and drain the previous slot. Do not use
 an in-place `launcher rebuild` on the live slot. Existing posts with incorrect
 player parameters need their cooked display corrected; changing the plugin
 alone does not repair already stored HTML.
+
+## Mobile player metadata (1.4.4)
+
+Bilibili redirects mobile browsers to `mbplayer.html`. Its ID lookup can return
+HTTP 412 and play the provider's error clip, even though desktop embeds work.
+We now read the public video page's initial-state JSON and include the video's
+`aid`, `bvid`, and the exact selected part's `cid` in the official iframe URL.
+No video stream is proxied and no account cookie is required. The public AV
+page is used for both ID forms; returned metadata must still match the original
+video identity. Missing or invalid parts never silently select part 1.
+
+Metadata is cached for one day (including both AV and BV aliases); failed
+lookups are cached for five minutes. Requests have bounded time/size and use
+Discourse's SSRF-safe HTTP client. An upstream failure preserves the original
+iframe rather than breaking post creation. Stored historical iframes require
+an explicit metadata backfill. Supplemental tests cover exact-part selection,
+cache reuse, upstream failure, wrong-video responses, and large AV identifiers.
+
+Reference: the same mobile API failure and official embed-parameter workaround
+are documented in https://github.com/VocaDB/vocadb/issues/2191.

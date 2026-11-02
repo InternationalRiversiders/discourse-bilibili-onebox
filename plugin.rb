@@ -1,6 +1,6 @@
 # name: discourse-bilibili-onebox
 # about: A Discourse plugin to embed Bilibili videos. Modified by Jackzhang144.
-# version: 1.4.3
+# version: 1.4.4
 # authors: Appinn, modified by Jackzhang144.
 # url: https://github.com/JackZ144/discourse-bilibili-onebox
 # required_version: 2.9.0
@@ -57,6 +57,13 @@ after_initialize do
           end
           page = page.to_s.match?(/\A[1-9]\d*\z/) ? page.to_s : nil
           params["p"] = page if page
+          # The mobile player cannot reliably resolve IDs through /view (412).
+          # Supply the exact part's public embed IDs; never use part 1 for part N.
+          metadata = video_metadata(video_id)
+          part = metadata && metadata["pages"].find { |item| item["page"] == (page || "1").to_i }
+          if part
+            params.merge!("aid" => metadata["aid"].to_s, "bvid" => metadata["bvid"], "cid" => part["cid"].to_s)
+          end
           params.merge!("high_quality" => "1", "autoplay" => "0")
           player = CGI.escapeHTML("https://player.bilibili.com/player.html?#{URI.encode_www_form(params)}")
           "<iframe class='bilibili-onebox' title='B站视频' src='#{player}' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allow='fullscreen; picture-in-picture; encrypted-media' allowfullscreen='true'></iframe>"
@@ -64,6 +71,96 @@ after_initialize do
 
         def self.valid_video_id?(id)
           id.to_s.match?(/\A(?:BV[0-9A-Za-z]{10}|[aA][vV][1-9]\d*)\z/)
+        end
+
+        def self.video_metadata(video_id)
+          return unless valid_video_id?(video_id)
+
+          video_id = "av#{video_id[2..]}" if video_id.match?(/\Aav/i)
+          key = "bilibili-video-metadata:v1:#{video_id}"
+          cached = Discourse.cache.read(key)
+          return cached.presence unless cached.nil?
+
+          metadata = parse_video_metadata(fetch_video_page(video_id), video_id)
+          # A transient upstream failure must not permanently poison an embed.
+          Discourse.cache.write(key, metadata || {}, expires_in: metadata ? 1.day : 5.minutes)
+          if metadata
+            ["av#{metadata['aid']}", metadata["bvid"]].each do |id|
+              Discourse.cache.write("bilibili-video-metadata:v1:#{id}", metadata, expires_in: 1.day)
+            end
+          end
+          metadata
+        rescue StandardError => e
+          Rails.logger.warn("[discourse-bilibili-onebox] video metadata unavailable: #{video_id} (#{e.class})")
+          Discourse.cache.write(key, {}, expires_in: 5.minutes) if key
+          nil
+        end
+
+        def self.fetch_video_page(video_id)
+          return unless valid_video_id?(video_id)
+
+          # BV and AV address the same public page. The AV route currently
+          # serves its initial-state JSON more reliably than the BV route.
+          aid = numeric_video_id(video_id)
+          route_id = aid ? "av#{aid}" : video_id
+          body = +""
+          started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          destination = FinalDestination.new(
+            "https://www.bilibili.com/video/#{route_id}/",
+            max_redirects: 2,
+            timeout: 3,
+            headers: { "User-Agent" => REQUEST_UA, "Accept" => "text/html" },
+          )
+          destination.get do |response, chunk, _uri|
+            next unless response.is_a?(Net::HTTPSuccess) && chunk
+            body << chunk
+            if body.bytesize > 2_000_000 || Process.clock_gettime(Process::CLOCK_MONOTONIC) - started > 5
+              body.clear
+              throw :done
+            end
+          end
+          body
+        end
+
+        def self.numeric_video_id(id)
+          return id[2..].to_i if id.match?(/\Aav[1-9]\d*\z/i)
+          return unless id.match?(/\ABV1[0-9A-Za-z]{9}\z/)
+
+          alphabet = "FcwAPNKTMug3GV5Lj7EJnHpWsx4tb8haYeviqBz6rkCy12mUSDQX9RdoZf"
+          digits = id.chars
+          digits[3], digits[9] = digits[9], digits[3]
+          digits[4], digits[7] = digits[7], digits[4]
+          value = 0
+          digits[3..].each do |digit|
+            index = alphabet.index(digit)
+            return unless index
+            value = value * 58 + index
+          end
+          aid = (value & ((1 << 51) - 1)) ^ 23442827791579
+          aid if aid > 0
+        end
+
+        def self.parse_video_metadata(html, video_id)
+          # Parse JSON only, never evaluate script from the remote page.
+          state = html.to_s[/window\.__INITIAL_STATE__\s*=\s*(\{.*?\});\s*(?:\(function|<\/script)/m, 1]
+          return unless state
+
+          video = ::JSON.parse(state)["videoData"]
+          return unless video.is_a?(Hash) && video["aid"].is_a?(Integer) && video["aid"] > 0
+          return unless video["bvid"].to_s.match?(/\ABV[0-9A-Za-z]{10}\z/)
+          expected = video_id.match?(/\Aav/i) ? "av#{video['aid']}" : video["bvid"]
+          return unless expected == video_id
+          return unless video["pages"].is_a?(Array)
+
+          pages = video["pages"].filter_map do |part|
+            next unless part.is_a?(Hash) && part["page"].is_a?(Integer) && part["page"] > 0
+            next unless part["cid"].is_a?(Integer) && part["cid"] > 0
+            { "page" => part["page"], "cid" => part["cid"] }
+          end
+          return if pages.empty? || pages.map { |part| part["page"] }.uniq.size != pages.size
+          { "aid" => video["aid"], "bvid" => video["bvid"], "pages" => pages }
+        rescue ::JSON::ParserError, TypeError
+          nil
         end
 
         def self.extract_video_id(url)
