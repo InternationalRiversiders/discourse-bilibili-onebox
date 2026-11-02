@@ -1,6 +1,6 @@
 # name: discourse-bilibili-onebox
 # about: A Discourse plugin to embed Bilibili videos. Modified by Jackzhang144.
-# version: 1.4.1
+# version: 1.4.2
 # authors: Appinn, modified by Jackzhang144.
 # url: https://github.com/JackZ144/discourse-bilibili-onebox
 # required_version: 2.9.0
@@ -48,13 +48,29 @@ after_initialize do
         matches_regexp Regexp.union(REGEX, LIVE_REGEX, HUYA_REGEX)
 
         def self.iframe_html(video_id, page = nil)
-          page_query = page.present? ? "&p=#{page}" : ""
-          "<iframe class='bilibili-onebox' src='https://player.bilibili.com/player.html?bvid=#{video_id}#{page_query}&high_quality=1&autoplay=0' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allowfullscreen='true'></iframe>"
+          return unless valid_video_id?(video_id)
+
+          params = if video_id.match?(/\Aav/i)
+            { "aid" => video_id[2..] }
+          else
+            { "bvid" => video_id }
+          end
+          page = page.to_s.match?(/\A[1-9]\d*\z/) ? page.to_s : nil
+          params["p"] = page if page
+          params.merge!("high_quality" => "1", "autoplay" => "0")
+          player = CGI.escapeHTML("https://player.bilibili.com/player.html?#{URI.encode_www_form(params)}")
+          original = "https://www.bilibili.com/video/#{video_id}#{page ? "?p=#{page}" : ""}"
+          "<iframe class='bilibili-onebox' title='B站视频' src='#{player}' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allow='fullscreen; picture-in-picture; encrypted-media' allowfullscreen='true'></iframe>" \
+            "<p class='bilibili-original-link'><a href='#{CGI.escapeHTML(original)}' target='_blank' rel='noopener noreferrer'>在 B 站打开</a></p>"
+        end
+
+        def self.valid_video_id?(id)
+          id.to_s.match?(/\A(?:BV[0-9A-Za-z]{10}|[aA][vV][1-9]\d*)\z/)
         end
 
         def self.extract_video_id(url)
           match = REGEX.match(url.to_s)
-          match && match[2]
+          match[2] if match && valid_video_id?(match[2])
         end
 
         def self.extract_video_page(url)
@@ -67,7 +83,7 @@ after_initialize do
           return if uri.query.blank?
 
           page = URI.decode_www_form(uri.query).to_h["p"]
-          page if page.present? && page.match?(/\A\d+\z/)
+          page if page.present? && page.match?(/\A[1-9]\d*\z/)
         rescue URI::InvalidURIError, ArgumentError
           nil
         end
@@ -236,6 +252,9 @@ after_initialize do
                 timeout: 5,
                 http_verb: :get,
                 headers: request_headers,
+                # The redirect already contains the video ID and part. Fetching
+                # the destination page adds no information and can fail with 412.
+                ignore_redirects: ["https://www.bilibili.com/video/", "https://m.bilibili.com/video/"],
                 )
             resolved = fd.resolve
             duration_ms =
@@ -243,7 +262,7 @@ after_initialize do
             Rails.logger.info(
               "[discourse-bilibili-onebox] short link resolved to: #{resolved.inspect} " \
                 "(status=#{fd.status} status_code=#{fd.status_code} content_type=#{fd.content_type} " \
-                "redirected=#{fd.redirected?} hostname=#{fd.hostname} cookie=#{fd.cookie.inspect} " \
+                "redirected=#{fd.redirected?} hostname=#{fd.hostname} " \
                 "ignored=#{fd.ignored.inspect} duration_ms=#{duration_ms})",
               )
             video_id = extract_video_id(resolved) if resolved
@@ -276,11 +295,11 @@ after_initialize do
             page = cached[:page] || cached["page"]
             page_checked = cached[:page_checked]
             page_checked = cached["page_checked"] if page_checked.nil?
-            if video_id.present?
+            if valid_video_id?(video_id)
               return { video_id: video_id, page: page, page_checked: page_checked == true }
             end
           when String
-            return { video_id: cached, page_checked: false }
+            return { video_id: cached, page_checked: false } if valid_video_id?(cached)
           end
           nil
         end
@@ -335,34 +354,24 @@ after_initialize do
               # 跳过已经满足独立成行条件的链接
               next line if stripped.match?(ALL_LINK_REGEX)
 
-              # 从后往前处理所有链接，避免处理前面的链接时影响后面链接的位置
+              # 按原文顺序拼接，避免多个链接之间的文字被重复或丢失。
               matches = content.enum_for(:scan, ALL_LINK_SCAN_REGEX).map do
                 [Regexp.last_match.begin(0), Regexp.last_match.end(0), Regexp.last_match[0]]
-              end.reverse!
+              end
+              next line if matches.empty?
+              # Do not rewrite Markdown/HTML links or inline code as bare links.
+              next line if content.match?(/[\[\]`<>]/) || content.match?(/\A(?: {4}|\t)/)
 
               result = "".dup
-              matches.each_with_index do |(match_start, match_end, link_text), idx|
-                before_link = content[0...match_start] if idx.zero?
-                after_link = content[match_end..-1]
-
-                result << before_link.to_s
-                has_text_before = idx.zero? ? before_link.to_s.strip.present? : true
-                has_text_after = after_link.present?
-
-                if has_text_before && has_text_after
-                  result << "\n\n#{link_text}\n\n"
-                elsif has_text_before
-                  result << "\n\n#{link_text}"
-                elsif has_text_after
-                  result << "\n#{link_text}\n"
-                else
-                  result << "\n#{link_text}"
-                end
-                Rails.logger.info(
-                  "[discourse-bilibili-onebox] wrapped inline link: #{link_text}",
-                )
+              cursor = 0
+              matches.each do |match_start, match_end, link_text|
+                result << content[cursor...match_start]
+                result << "\n\n" unless result.empty?
+                result << link_text
+                result << "\n\n" if match_end < content.length
+                cursor = match_end
               end
-              result << content[(matches.last[1])..-1].to_s
+              result << content[cursor..-1].to_s
               result == content ? line : "#{result}#{newline}"
             end
             .join
@@ -511,7 +520,11 @@ after_initialize do
           ::Onebox::Engine::BilibiliOnebox.huya_iframe_html(room_id)
         end
       next unless iframe
-      link.replace(iframe)
+      if block_link
+        parent.replace(iframe)
+      else
+        link.replace(iframe)
+      end
     end
   end
 

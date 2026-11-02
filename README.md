@@ -93,3 +93,27 @@ If you see iframe with `data-unsanitized-src` but no `src`:
 ---
 
 Thanks to [Discourse 中文本地化服务集合](https://github.com/erickguan/discourse-chinese-localization-pack).
+
+## Player fixes (1.4.2)
+
+AV links use the official numeric `aid` parameter; BV links use `bvid`. Valid
+multi-part `p` values are preserved. Every video embed includes an original-site
+link as a fallback when the external player cannot play the video. This does not
+bypass Bilibili login, regional, copyright, or browser playback restrictions.
+
+Short-link resolution stops at a validated Bilibili `/video/` redirect. It does
+not fetch the destination HTML, which can return HTTP 412 even when the video
+URL is valid. Successful resolutions are cached. Failures retain the original
+link. Creation and editing share this behavior.
+
+Regression tests: run `bundle exec rails runner /path/to/test/player_test.rb`
+inside a disposable Discourse instance/database. The tests create a topic and
+must not be run against production. They cover AV/BV parameters, multi-part
+videos, cached short links, destination-page rejection, create/edit processing,
+plain text, multiple inline links, and fallback-link stability.
+
+For this forum, production releases follow `/opt/AGENTS.md`: prepare and verify
+the inactive Web slot, then switch Nginx and drain the previous slot. Do not use
+an in-place `launcher rebuild` on the live slot. Existing posts with incorrect
+player parameters need their cooked display corrected; changing the plugin
+alone does not repair already stored HTML.
