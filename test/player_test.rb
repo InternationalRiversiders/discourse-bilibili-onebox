@@ -20,13 +20,12 @@ class BilibiliPlayerTest < Minitest::Test
     URI.decode_www_form(URI.parse(doc.at_css('iframe')['src']).query).to_h
   end
 
-  def test_av_player_and_original_link
+  def test_av_player_without_extra_link
     doc = document('av117460158190918')
     assert_equal '117460158190918', parameters(doc)['aid']
     refute parameters(doc).key?('bvid')
+    assert_empty doc.css('a')
     assert_equal '0', parameters(doc)['autoplay']
-    assert_equal 'https://www.bilibili.com/video/av117460158190918', doc.at_css('a')['href']
-    assert_equal '在 B 站打开', doc.at_css('a').text
   end
 
   def test_bv_and_part_preserved
@@ -34,7 +33,6 @@ class BilibiliPlayerTest < Minitest::Test
     assert_equal 'BV1GJ411x7h7', parameters(doc)['bvid']
     assert_equal '4', parameters(doc)['p']
     refute parameters(doc).key?('aid')
-    assert_equal 'https://www.bilibili.com/video/BV1GJ411x7h7?p=4', doc.at_css('a')['href']
     assert_includes doc.at_css('iframe')['allow'], 'fullscreen'
   end
 
@@ -86,15 +84,15 @@ class BilibiliPlayerTest < Minitest::Test
     assert_equal '10186015', parameters(Nokogiri::HTML.fragment(html))['aid']
   end
 
-  def test_post_processing_keeps_fallback_and_corrects_bare_link
+  def test_post_processing_corrects_bare_link_without_extra_link
     doc = Nokogiri::HTML.fragment('<p><a href="https://www.bilibili.com/video/av10186015">https://www.bilibili.com/video/av10186015</a></p>')
     DiscourseEvent.trigger(:post_process_cooked, doc, Post.new)
     assert_equal '10186015', parameters(doc)['aid']
     assert_equal 1, doc.css('iframe').size
-    assert_equal 1, doc.css('a').size
+    assert_equal 0, doc.css('a').size
     DiscourseEvent.trigger(:post_process_cooked, doc, Post.new)
     assert_equal 1, doc.css('iframe').size
-    assert_equal 1, doc.css('a').size
+    assert_equal 0, doc.css('a').size
     refute doc.at_css('iframe').ancestors.any? { |node| node.name == 'p' }
   end
   def test_short_redirect_never_fetches_blocked_destination

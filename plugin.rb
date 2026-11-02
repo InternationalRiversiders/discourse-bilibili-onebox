@@ -1,6 +1,6 @@
 # name: discourse-bilibili-onebox
 # about: A Discourse plugin to embed Bilibili videos. Modified by Jackzhang144.
-# version: 1.4.2
+# version: 1.4.3
 # authors: Appinn, modified by Jackzhang144.
 # url: https://github.com/JackZ144/discourse-bilibili-onebox
 # required_version: 2.9.0
@@ -59,9 +59,7 @@ after_initialize do
           params["p"] = page if page
           params.merge!("high_quality" => "1", "autoplay" => "0")
           player = CGI.escapeHTML("https://player.bilibili.com/player.html?#{URI.encode_www_form(params)}")
-          original = "https://www.bilibili.com/video/#{video_id}#{page ? "?p=#{page}" : ""}"
-          "<iframe class='bilibili-onebox' title='B站视频' src='#{player}' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allow='fullscreen; picture-in-picture; encrypted-media' allowfullscreen='true'></iframe>" \
-            "<p class='bilibili-original-link'><a href='#{CGI.escapeHTML(original)}' target='_blank' rel='noopener noreferrer'>在 B 站打开</a></p>"
+          "<iframe class='bilibili-onebox' title='B站视频' src='#{player}' scrolling='no' border='0' frameborder='no' width='100%' height='100%' allow='fullscreen; picture-in-picture; encrypted-media' allowfullscreen='true'></iframe>"
         end
 
         def self.valid_video_id?(id)

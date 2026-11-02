@@ -97,8 +97,8 @@ Thanks to [Discourse 中文本地化服务集合](https://github.com/erickguan/d
 ## Player fixes (1.4.2)
 
 AV links use the official numeric `aid` parameter; BV links use `bvid`. Valid
-multi-part `p` values are preserved. Every video embed includes an original-site
-link as a fallback when the external player cannot play the video. This does not
+multi-part `p` values are preserved. Video embeds use the official player’s own navigation; no extra original-site
+link is added below the player. This does not
 bypass Bilibili login, regional, copyright, or browser playback restrictions.
 
 Short-link resolution stops at a validated Bilibili `/video/` redirect. It does
@@ -110,7 +110,7 @@ Regression tests: run `bundle exec rails runner /path/to/test/player_test.rb`
 inside a disposable Discourse instance/database. The tests create a topic and
 must not be run against production. They cover AV/BV parameters, multi-part
 videos, cached short links, destination-page rejection, create/edit processing,
-plain text, multiple inline links, and fallback-link stability.
+plain text, multiple inline links, and repeat-processing stability.
 
 For this forum, production releases follow `/opt/AGENTS.md`: prepare and verify
 the inactive Web slot, then switch Nginx and drain the previous slot. Do not use
